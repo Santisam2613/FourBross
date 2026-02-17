@@ -22,6 +22,7 @@ export default function BranchSelectionPage() {
   const [city, setCity] = useState('');
   const [loading, setLoading] = useState(true);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   useEffect(() => {
     const run = async () => {
@@ -45,8 +46,21 @@ export default function BranchSelectionPage() {
   const filteredBranches = useMemo(() => {
     const q = city.trim().toLowerCase();
     if (!q) return branches;
-    return branches.filter((b) => b.city.toLowerCase().includes(q));
+    return branches.filter(
+      (b) => b.city.toLowerCase().includes(q) || b.name.toLowerCase().includes(q)
+    );
   }, [branches, city]);
+
+  const uniqueCities = useMemo(() => {
+    const cities = branches.map((b) => b.city);
+    return Array.from(new Set(cities)).sort();
+  }, [branches]);
+
+  const filteredCities = useMemo(() => {
+    const q = city.trim().toLowerCase();
+    if (!q) return uniqueCities;
+    return uniqueCities.filter((c) => c.toLowerCase().includes(q));
+  }, [uniqueCities, city]);
 
   const selectBranch = async (branchId: string) => {
     const supabase = createSupabaseBrowserClient();
@@ -87,8 +101,41 @@ export default function BranchSelectionPage() {
               placeholder="Ubicación"
               className="h-14 rounded-2xl border-0 bg-zinc-100 pl-12 text-zinc-900 placeholder:text-zinc-400 focus-visible:ring-primary"
               value={city}
-              onChange={(e) => setCity(e.target.value)}
+              onChange={(e) => {
+                setCity(e.target.value);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
             />
+            {showSuggestions && city && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-lg border border-zinc-100 overflow-hidden z-20">
+                {filteredCities.length > 0 ? (
+                  filteredCities.map((c) => (
+                    <button
+                      key={c}
+                      className="w-full text-left px-4 py-3 hover:bg-zinc-50 text-sm text-zinc-800 border-b border-zinc-50 last:border-0"
+                      onClick={() => {
+                        setCity(c);
+                        setShowSuggestions(false);
+                      }}
+                    >
+                      {c}
+                    </button>
+                  ))
+                ) : (
+                  <div className="p-4 text-center">
+                    <div className="flex justify-center mb-2">
+                      <div className="h-10 w-10 rounded-full bg-zinc-100 flex items-center justify-center">
+                        <MapPin className="h-5 w-5 text-zinc-400" />
+                      </div>
+                    </div>
+                    <p className="text-sm font-medium text-zinc-900">No encontramos esa ciudad</p>
+                    <p className="text-xs text-zinc-500 mt-1">Estamos trabajando para llegar a más lugares.</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <Button className="w-full h-14 rounded-b-[48px] rounded-t-xl text-base font-semibold">
