@@ -1,0 +1,22 @@
+{
+  "name": "FourBross Barbería",
+  "short_name": "FourBross",
+  "description": "Barbería de lujo y club exclusivo.",
+  "start_url": "/auth/login",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#800020",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

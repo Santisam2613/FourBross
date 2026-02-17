@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  /* Brand Colors */
+  --brand-black: #000000;
+  --brand-white: #ffffff;
+  --brand-red: #800020; /* Wine / Burgundy */
+  
+  /* Theme Colors */
+  --background: var(--brand-white);
+  --foreground: var(--brand-black);
+  
+  --primary: var(--brand-red);
+  --primary-foreground: var(--brand-white);
+  
+  --secondary: #f4f4f5; /* Zinc-100 */
+  --secondary-foreground: var(--brand-black);
+  
+  --muted: #fafafa; /* Zinc-50 */
+  --muted-foreground: #71717a; /* Zinc-500 */
+  
+  --accent: #f4f4f5;
+  --accent-foreground: var(--brand-black);
+  
+  --card: var(--brand-white);
+  --card-foreground: var(--brand-black);
+  
+  --border: #e4e4e7; /* Zinc-200 */
+  --input: #e4e4e7;
+  --ring: var(--brand-red);
+  
+  --radius: 0.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  /* Enforcing light mode preference for "Mucho espacio en blanco" feel as per request, 
+     but providing dark mode variables just in case system preference overrides 
+     or if we want to support it later. 
+     However, luxury barber shops often look good in dark mode too.
+     But user said "Mucho espacio en blanco" (Lots of whitespace) which usually implies light theme.
+     "Negro sólido" (Solid black) is a brand color.
+     I will stick to light mode by default as per "Mucho espacio en blanco".
+     If I want to force light mode, I can just not define dark mode overrides or set them same as light.
+     User said "Colores: Negro sólido, Blanco, Rojo oscuro".
+     "Mucho espacio en blanco" -> White background.
+  */
+  :root {
+    --background: var(--brand-white);
+    --foreground: var(--brand-black);
+    /* ... same as light ... */
+  }
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar for Webkit */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--muted-foreground);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--foreground);
+}
