@@ -61,18 +61,20 @@ export default function RegisterPage() {
         return;
       }
 
-      if (!data.session) {
-        setInfoMessage('Cuenta creada. Revisa tu correo para confirmar tu cuenta y luego inicia sesión.');
+      // Si la confirmación de email está desactivada, el usuario ya tiene sesión
+      if (data.session) {
+        const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+        const role = profile?.role;
+        if (typeof role === 'string' && isRoleCode(role)) {
+          router.push(roleHomePath(role));
+        } else {
+          router.push('/client/branch-selection');
+        }
         return;
       }
 
-      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-      const role = profile?.role;
-      if (typeof role === 'string' && isRoleCode(role)) {
-        router.push(roleHomePath(role));
-      } else {
-        router.push('/client/branch-selection');
-      }
+      // Fallback por si la confirmación sigue activa
+      setInfoMessage('Cuenta creada. Revisa tu correo para confirmar tu cuenta y luego inicia sesión.');
     } finally {
       setSubmitting(false);
     }
