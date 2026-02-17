@@ -1,17 +1,19 @@
-function required(name: string) {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing ${name}`);
-  return value;
-}
-
 export function getPublicSupabaseUrl() {
-  return required('NEXT_PUBLIC_SUPABASE_URL');
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL');
+  return url;
 }
 
 export function getPublicSupabaseAnonKey() {
-  return required('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!key) throw new Error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  return key;
+}
+
+export function getServiceRoleKey() {
+  return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.FOURBROS_SERVICE_ROLE_KEY;
 }
 
 export function getCronSecret() {
-  return process.env.FOURBROS_CRON_SECRET ?? null;
+  return process.env.FOURBROS_CRON_SECRET;
 }
