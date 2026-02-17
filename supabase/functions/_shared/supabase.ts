@@ -21,7 +21,7 @@ export function getSupabaseAnonKey() {
 }
 
 export function getSupabaseServiceRoleKey() {
-  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const key = getEnvAny(['SUPABASE_SERVICE_ROLE_KEY', 'FOURBROS_SERVICE_ROLE_KEY', 'SERVICE_ROLE_KEY']);
   if (!key) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY');
   return key;
 }

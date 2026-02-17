@@ -20,11 +20,21 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   const submit = async () => {
     if (submitting) return;
-    if (!email.trim() || !password) return;
-    if (passwordConfirm && passwordConfirm !== password) return;
+    setErrorMessage(null);
+    setInfoMessage(null);
+    if (!email.trim() || !password) {
+      setErrorMessage('Completa correo y contraseña.');
+      return;
+    }
+    if (passwordConfirm && passwordConfirm !== password) {
+      setErrorMessage('Las contraseñas no coinciden.');
+      return;
+    }
     setSubmitting(true);
     try {
       const supabase = createSupabaseBrowserClient();
@@ -36,14 +46,23 @@ export default function RegisterPage() {
             first_name: name.trim(),
             phone: phone.trim(),
           },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       });
 
-      if (error) return;
+      if (error) {
+        setErrorMessage(error.message);
+        return;
+      }
 
       const user = data.user;
       if (!user) {
         router.push('/auth/login');
+        return;
+      }
+
+      if (!data.session) {
+        setInfoMessage('Cuenta creada. Revisa tu correo para confirmar tu cuenta y luego inicia sesión.');
         return;
       }
 
@@ -87,6 +106,12 @@ export default function RegisterPage() {
             submit();
           }}
         >
+          {errorMessage ? (
+            <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{errorMessage}</div>
+          ) : null}
+          {infoMessage ? (
+            <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{infoMessage}</div>
+          ) : null}
           <div className="relative">
             <User className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-primary" />
             <Input
