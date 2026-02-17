@@ -15,6 +15,7 @@ type Branch = {
   name: string;
   city: string;
   address: string;
+  image_url?: string;
 };
 
 export default function BranchSelectionPage() {
@@ -31,7 +32,7 @@ export default function BranchSelectionPage() {
         const supabase = createSupabaseBrowserClient();
         const { data } = await supabase
           .from('branches')
-          .select('id, name, city, address')
+          .select('id, name, city, address, image_url')
           .eq('is_active', true)
           .is('deleted_at', null)
           .order('name', { ascending: true });
@@ -137,55 +138,61 @@ export default function BranchSelectionPage() {
               </div>
             )}
           </div>
-
-          <Button className="w-full h-14 rounded-b-[48px] rounded-t-xl text-base font-semibold">
-            Buscar
-          </Button>
         </div>
 
         <div className="mt-10">
           <p className="text-sm text-zinc-500 mb-4">Resultados:</p>
 
           <div className="space-y-5">
-            {(loading ? [] : filteredBranches).map((branch) => (
-              <button
-                key={branch.id}
-                type="button"
-                className="block w-full text-left"
-                onClick={() => selectBranch(branch.id)}
-              >
-                <Card className="border-zinc-200 overflow-hidden shadow-sm">
-                  <div className="h-44 bg-zinc-200 relative">
-                    <img
-                      src="https://images.unsplash.com/photo-1585747860715-2ba37e788b70?q=80&w=1600&auto=format&fit=crop"
-                      alt={branch.name}
-                      className="absolute inset-0 h-full w-full object-cover"
-                    />
+            {loading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="border border-zinc-200 rounded-2xl overflow-hidden shadow-sm animate-pulse">
+                  <div className="h-44 bg-zinc-200" />
+                  <div className="p-5 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-2 flex-1">
+                        <div className="h-5 w-32 bg-zinc-200 rounded" />
+                        <div className="h-3 w-48 bg-zinc-200 rounded" />
+                      </div>
+                      <div className="h-8 w-20 bg-zinc-200 rounded-full" />
+                    </div>
                   </div>
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <h3 className="font-bold text-zinc-900 truncate">{branch.name}</h3>
-                        <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{branch.address}</p>
-                      </div>
-                      <div className="shrink-0 rounded-full bg-primary px-4 py-2 text-white text-sm font-semibold">
-                        {branch.city}
-                      </div>
+                </div>
+              ))
+            ) : (
+              filteredBranches.map((branch) => (
+                <button
+                  key={branch.id}
+                  type="button"
+                  className="block w-full text-left"
+                  onClick={() => selectBranch(branch.id)}
+                >
+                  <Card className="border-zinc-200 overflow-hidden shadow-sm">
+                    <div className="h-44 bg-zinc-200 relative">
+                      <img
+                        src={
+                          branch.image_url ||
+                          'https://images.unsplash.com/photo-1585747860715-2ba37e788b70?q=80&w=1600&auto=format&fit=crop'
+                        }
+                        alt={branch.name}
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
                     </div>
-
-                    <div className="mt-3 flex items-center gap-2">
-                      <div className="flex items-center gap-0.5 text-primary">
-                        {[1, 2, 3, 4].map((i) => (
-                          <Star key={i} className="h-4 w-4 fill-primary" />
-                        ))}
-                        <Star className="h-4 w-4 text-zinc-300" />
+                    <CardContent className="p-5">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <h3 className="font-bold text-zinc-900 truncate">{branch.name}</h3>
+                          <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{branch.address}</p>
+                        </div>
+                        <div className="shrink-0 rounded-full bg-primary px-4 py-2 text-white text-sm font-semibold">
+                          {branch.city}
+                        </div>
                       </div>
-                      <span className="text-sm text-zinc-500">4.9</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </button>
-            ))}
+                    </CardContent>
+                  </Card>
+                </button>
+              ))
+            )}
           </div>
         </div>
       </div>

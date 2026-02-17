@@ -15,47 +15,20 @@ export default function ClientHomePage() {
   const [displayName, setDisplayName] = useState<string>('');
   const [stamps, setStamps] = useState<number>(0);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
+  const [branchName, setBranchName] = useState<string>('');
+  const [branchImage, setBranchImage] = useState<string>('');
+  const [services, setServices] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  const formatPrice = (cents: number) => {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: 'COP',
+      minimumFractionDigits: 0,
+    }).format(cents / 100); // Asumiendo que guardamos centavos pero queremos mostrar pesos (dividir por 100 si son centavos reales, o ajustar según convención)
+  };
 
-  const details = {
-    services: {
-      title: 'Servicios',
-      desc: 'Cortes, barba y rituales. Reserva en segundos con tu barbero favorito.',
-      price: 'Desde $200',
-      rating: 4.9,
-      image:
-        'https://images.unsplash.com/photo-1585747860715-2ba37e788b70?q=80&w=1600&auto=format&fit=crop',
-      href: '/client/service-detail',
-    },
-    products: {
-      title: 'Productos',
-      desc: 'Cuidado premium para cabello y barba. Recomendados por nuestros barberos.',
-      price: 'Top picks',
-      rating: 4.8,
-      image:
-        'https://images.unsplash.com/photo-1515378791036-0648a3ef77b2?q=80&w=1600&auto=format&fit=crop',
-      href: '/client/products/1',
-    },
-    rewards: {
-      title: 'Premios',
-      desc: 'Acumula puntos, desbloquea beneficios y participa en el sorteo mensual.',
-      price: 'Club',
-      rating: 4.7,
-      image:
-        'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?q=80&w=1600&auto=format&fit=crop',
-      href: '/client/rewards',
-    },
-    branch: {
-      title: 'Sucursal',
-      desc: 'Elige la ubicación que más te convenga y revisa disponibilidad.',
-      price: 'CDMX',
-      rating: 4.9,
-      image:
-        'https://images.unsplash.com/photo-1599351431202-6e0c06e76553?q=80&w=1600&auto=format&fit=crop',
-      href: '/client/branch-selection',
-    },
-  } as const;
-
-  const activeDetails = details[active];
   const stampsProgress = useMemo(() => {
     const current = Math.max(0, stamps % 10);
     return { current, target: 10 };
@@ -63,36 +36,70 @@ export default function ClientHomePage() {
 
   useEffect(() => {
     const run = async () => {
-      const supabase = createSupabaseBrowserClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      setLoading(true);
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('first_name, last_name, selected_branch_id')
-        .eq('id', user.id)
-        .single();
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('first_name, last_name, selected_branch_id')
+          .eq('id', user.id)
+          .single();
 
-      const fullName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
-      setDisplayName(fullName);
-      
-      if (!profile?.selected_branch_id) {
-        router.push('/client/branch-selection');
-        return;
-      }
-      
-      setSelectedBranchId(profile.selected_branch_id);
+        const fullName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
+        setDisplayName(fullName);
+        
+        if (!profile?.selected_branch_id) {
+          router.push('/client/branch-selection');
+          return;
+        }
+        
+        setSelectedBranchId(profile.selected_branch_id);
 
-      if (profile?.selected_branch_id) {
-        const { data: card } = await supabase
-          .from('loyalty_cards')
-          .select('stamps')
-          .eq('client_id', user.id)
-          .eq('branch_id', profile.selected_branch_id)
-          .maybeSingle();
-        setStamps(card?.stamps ?? 0);
+        if (profile.selected_branch_id) {
+          const [
+            { data: branch },
+            { data: sData },
+            { data: pData },
+            { data: card }
+          ] = await Promise.all([
+            supabase
+              .from('branches')
+              .select('name, image_url')
+              .eq('id', profile.selected_branch_id)
+              .single(),
+            supabase
+              .from('services')
+              .select('*')
+              .eq('branch_id', profile.selected_branch_id)
+              .eq('is_active', true)
+              .order('name'),
+            supabase
+              .from('products')
+              .select('*')
+              .eq('branch_id', profile.selected_branch_id)
+              .eq('is_active', true)
+              .order('name'),
+            supabase
+              .from('loyalty_cards')
+              .select('stamps')
+              .eq('client_id', user.id)
+              .eq('branch_id', profile.selected_branch_id)
+              .maybeSingle()
+          ]);
+
+          if (branch) {
+            setBranchName(branch.name);
+            setBranchImage(branch.image_url || '');
+          }
+          setServices(sData || []);
+          setProducts(pData || []);
+          setStamps(card?.stamps ?? 0);
+        }
+      } finally {
+        setLoading(false);
       }
     };
     void run();
@@ -114,25 +121,58 @@ export default function ClientHomePage() {
 
   return (
     <MobileAppLayout outerClassName="bg-black" className="bg-zinc-50 pb-24">
-      <header className="bg-white px-6 pt-6 pb-4 flex items-center justify-between sticky top-0 z-10 border-b border-zinc-100">
-        <div className="flex items-center gap-3">
-          <div className="h-12 w-12 rounded-full bg-black flex items-center justify-center text-white border-2 border-primary">
-            <User className="h-6 w-6" />
+      {loading ? (
+        <div className="flex-1 flex flex-col p-6 space-y-8 animate-pulse">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-zinc-200" />
+              <div className="space-y-2">
+                <div className="h-4 w-32 bg-zinc-200 rounded" />
+                <div className="h-3 w-48 bg-zinc-200 rounded" />
+              </div>
+            </div>
+            <div className="h-10 w-10 rounded-full bg-zinc-200" />
           </div>
-          <div>
-            <h2 className="font-bold text-lg leading-none">{`Hola, ${displayName || ''}`}</h2>
-            <p className="text-xs text-zinc-500">Bienvenido donde el estilo cobra vida</p>
+
+          <div className="space-y-2">
+            <div className="h-8 w-48 bg-zinc-200 rounded" />
+            <div className="h-4 w-full bg-zinc-200 rounded" />
+            <div className="h-64 w-full bg-zinc-200 rounded-3xl mt-4" />
+          </div>
+
+          <div className="flex gap-4">
+            <div className="h-14 flex-1 rounded-full bg-zinc-200" />
+            <div className="h-14 flex-1 rounded-full bg-zinc-200" />
+            <div className="h-14 flex-1 rounded-full bg-zinc-200" />
+            <div className="h-14 flex-1 rounded-full bg-zinc-200" />
+          </div>
+
+          <div className="space-y-4">
+            <div className="h-72 w-full bg-zinc-200 rounded-3xl" />
+            <div className="h-72 w-full bg-zinc-200 rounded-3xl" />
           </div>
         </div>
-        <Link href="/client/profile">
-          <Button variant="ghost" size="icon" className="rounded-full">
-            <Settings className="h-5 w-5 text-zinc-700" />
-          </Button>
-        </Link>
-      </header>
+      ) : (
+        <>
+          <header className="bg-white px-6 pt-6 pb-4 flex items-center justify-between sticky top-0 z-10 border-b border-zinc-100">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-black flex items-center justify-center text-white border-2 border-primary">
+                <User className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="font-bold text-lg leading-none">{`Hola, ${displayName || ''}`}</h2>
+                <p className="text-xs text-zinc-500">Bienvenido donde el estilo cobra vida</p>
+              </div>
+            </div>
+            <Link href="/client/profile">
+              <Button variant="ghost" size="icon" className="rounded-full">
+                <Settings className="h-5 w-5 text-zinc-700" />
+              </Button>
+            </Link>
+          </header>
 
-      <div className="p-6 space-y-6">
-        <section className="space-y-2">
+          <div className="p-6 space-y-6">
+            <section className="space-y-2">
           <h3 className="text-3xl font-semibold tracking-tight">Tarjeta Digital</h3>
           <p className="text-sm text-zinc-500">{`Para reclamar tu corte gratis estas en ${stampsProgress.current}/${stampsProgress.target}`}</p>
 
@@ -207,43 +247,146 @@ export default function ClientHomePage() {
         </section>
 
         <section className="space-y-4">
-          <button
-            type="button"
-            className="block w-full text-left"
-            onClick={openActive}
-            aria-label="Abrir detalles"
-          >
-            <Card className="border-zinc-200 overflow-hidden rounded-3xl shadow-sm">
-            <div className="h-52 bg-zinc-200 relative">
-              <img
-                src={activeDetails.image}
-                alt={activeDetails.title}
-                className="absolute inset-0 h-full w-full object-cover"
-              />
+          {active === 'services' && (
+            <div className="space-y-4">
+              {services.length > 0 ? (
+                services.map((service) => (
+                  <button
+                    key={service.id}
+                    className="block w-full text-left"
+                    onClick={() => router.push('/client/service-detail')}
+                  >
+                    <Card className="border-zinc-200 overflow-hidden rounded-3xl shadow-sm">
+                      <div className="h-52 bg-zinc-200 relative">
+                        <img
+                          src={service.image_url || 'https://images.unsplash.com/photo-1585747860715-2ba37e788b70?q=80&w=1600&auto=format&fit=crop'}
+                          alt={service.name}
+                          className="absolute inset-0 h-full w-full object-cover"
+                        />
+                      </div>
+                      <CardContent className="p-5">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <h3 className="font-bold text-zinc-900 truncate">{service.name}</h3>
+                            <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{service.description}</p>
+                          </div>
+                          <div className="shrink-0 rounded-full bg-primary px-4 py-2 text-white text-sm font-semibold">
+                            {formatPrice(service.price_cents)}
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <span className="text-xs text-zinc-500">{service.duration_minutes} min</span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </button>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16 text-center space-y-4">
+                  <div className="h-16 w-16 rounded-full bg-zinc-100 flex items-center justify-center">
+                    <Scissors className="h-8 w-8 text-zinc-400" />
+                  </div>
+                  <div>
+                    <p className="text-lg font-semibold text-zinc-900">Sin servicios disponibles</p>
+                    <p className="text-sm text-zinc-500">Intenta buscar en otra sucursal o vuelve más tarde.</p>
+                  </div>
+                </div>
+              )}
             </div>
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <h3 className="font-bold text-zinc-900 truncate">{activeDetails.title}</h3>
-                  <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{activeDetails.desc}</p>
-                </div>
-                <div className="shrink-0 rounded-full bg-primary px-4 py-2 text-white text-sm font-semibold">
-                  {activeDetails.price}
-                </div>
-              </div>
+          )}
 
-              <div className="mt-3 flex items-center gap-2">
-                <div className="flex items-center gap-0.5 text-primary">
-                  {[1, 2, 3, 4].map((i) => (
-                    <Star key={i} className="h-4 w-4 fill-primary" />
-                  ))}
-                  <Star className="h-4 w-4 text-zinc-300" />
+          {active === 'products' && (
+            <div className="space-y-4">
+              {products.length > 0 ? (
+                products.map((product) => (
+                  <button
+                    key={product.id}
+                    className="block w-full text-left"
+                    onClick={() => router.push(`/client/products/${product.id}`)}
+                  >
+                    <Card className="border-zinc-200 overflow-hidden rounded-3xl shadow-sm">
+                      <div className="h-52 bg-zinc-200 relative">
+                        <img
+                          src={product.image_url || 'https://images.unsplash.com/photo-1515378791036-0648a3ef77b2?q=80&w=1600&auto=format&fit=crop'}
+                          alt={product.name}
+                          className="absolute inset-0 h-full w-full object-cover"
+                        />
+                      </div>
+                      <CardContent className="p-5">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <h3 className="font-bold text-zinc-900 truncate">{product.name}</h3>
+                            <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{product.description}</p>
+                          </div>
+                          <div className="shrink-0 rounded-full bg-primary px-4 py-2 text-white text-sm font-semibold">
+                            {formatPrice(product.price_cents)}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </button>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16 text-center space-y-4">
+                  <div className="h-16 w-16 rounded-full bg-zinc-100 flex items-center justify-center">
+                    <ShoppingBag className="h-8 w-8 text-zinc-400" />
+                  </div>
+                  <div>
+                    <p className="text-lg font-semibold text-zinc-900">Sin productos disponibles</p>
+                    <p className="text-sm text-zinc-500">Intenta buscar en otra sucursal o vuelve más tarde.</p>
+                  </div>
                 </div>
-                <span className="text-sm text-zinc-500">{activeDetails.rating}</span>
+              )}
+            </div>
+          )}
+
+          {active === 'rewards' && (
+            <Card className="border-zinc-200 overflow-hidden rounded-3xl shadow-sm">
+              <div className="h-52 bg-zinc-200 relative">
+                <img
+                  src="https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?q=80&w=1600&auto=format&fit=crop"
+                  alt="Premios"
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
               </div>
-            </CardContent>
-          </Card>
-          </button>
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-zinc-900 truncate">Premios</h3>
+                    <p className="mt-1 text-xs text-zinc-500 line-clamp-2">
+                      Acumula puntos, desbloquea beneficios y participa en el sorteo mensual.
+                    </p>
+                  </div>
+                  <div className="shrink-0 rounded-full bg-primary px-4 py-2 text-white text-sm font-semibold">
+                    Club
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {active === 'branch' && (
+            <Card className="border-zinc-200 overflow-hidden rounded-3xl shadow-sm">
+              <div className="h-52 bg-zinc-200 relative">
+                <img
+                  src={branchImage || 'https://images.unsplash.com/photo-1599351431202-6e0c06e76553?q=80&w=1600&auto=format&fit=crop'}
+                  alt={branchName}
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              </div>
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-zinc-900 truncate">{branchName || 'Sucursal'}</h3>
+                    <p className="mt-1 text-xs text-zinc-500 line-clamp-2">Tu sucursal seleccionada.</p>
+                  </div>
+                  <div className="shrink-0 rounded-full bg-primary px-4 py-2 text-white text-sm font-semibold">
+                    <Link href="/client/branch-selection">Cambiar</Link>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </section>
       </div>
 
@@ -257,6 +400,8 @@ export default function ClientHomePage() {
           </div>
         </Link>
       </div>
+      </>
+    )}
     </MobileAppLayout>
   );
 }
