@@ -77,7 +77,13 @@ export default function ClientHomePage() {
 
       const fullName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
       setDisplayName(fullName);
-      setSelectedBranchId(profile?.selected_branch_id ?? null);
+      
+      if (!profile?.selected_branch_id) {
+        router.push('/client/branch-selection');
+        return;
+      }
+      
+      setSelectedBranchId(profile.selected_branch_id);
 
       if (profile?.selected_branch_id) {
         const { data: card } = await supabase

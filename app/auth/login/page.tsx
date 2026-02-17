@@ -16,10 +16,18 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return;
+    
+    setErrorMessage(null);
+    if (!email.trim() || !password) {
+      setErrorMessage('Por favor ingresa correo y contraseña.');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const supabase = createSupabaseBrowserClient();
@@ -27,14 +35,26 @@ export default function LoginPage() {
         email: email.trim(),
         password,
       });
-      if (error || !data.user) return;
+      
+      if (error) {
+        setErrorMessage('Credenciales incorrectas. Intenta de nuevo.');
+        return;
+      }
+      
+      if (!data.user) {
+         setErrorMessage('Error inesperado. Intenta de nuevo.');
+         return;
+      }
 
       const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single();
       const role = profile?.role;
-      if (typeof role === 'string' && isRoleCode(role)) {
+      
+      if (role === 'client') {
+        router.push('/client/branch-selection');
+      } else if (typeof role === 'string' && isRoleCode(role)) {
         router.push(roleHomePath(role));
       } else {
-        router.push('/client/home');
+        router.push('/client/branch-selection');
       }
     } finally {
       setSubmitting(false);
@@ -63,6 +83,12 @@ export default function LoginPage() {
         </div>
 
         <form className="mt-10 space-y-5" onSubmit={onSubmit}>
+          {errorMessage && (
+            <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-sm font-medium text-center">
+              {errorMessage}
+            </div>
+          )}
+
           <div className="relative">
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-primary" />
             <Input

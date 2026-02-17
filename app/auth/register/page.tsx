@@ -65,7 +65,10 @@ export default function RegisterPage() {
       if (data.session) {
         const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
         const role = profile?.role;
-        if (typeof role === 'string' && isRoleCode(role)) {
+        
+        if (role === 'client') {
+          router.push('/client/branch-selection');
+        } else if (typeof role === 'string' && isRoleCode(role)) {
           router.push(roleHomePath(role));
         } else {
           router.push('/client/branch-selection');
