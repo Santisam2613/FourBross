@@ -1,13 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState, useTransition } from 'react';
-import Link from 'next/link';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Plus, Search, X, Calendar, Clock, User, Scissors, ShoppingBag } from 'lucide-react';
+import { Plus, Search, X, Calendar, Clock, Scissors, ShoppingBag } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { createOrder } from '@/actions/orders';
 
@@ -37,7 +36,7 @@ const statusLabel: Record<OrderStatus, string> = {
   cancelado: 'Cancelado',
 };
 
-function CommercialOrdersPageInner() {
+export default function CommercialOrdersClient() {
   const searchParams = useSearchParams();
   const preselectedClientId = searchParams.get('clientId');
 
@@ -93,7 +92,7 @@ function CommercialOrdersPageInner() {
     }
 
     const { data: me } = await supabase.from('usuarios').select('sucursal_id').eq('id', user.id).single();
-    const bId = (me as any)?.sucursal_id as string | null;
+    const bId = (me as unknown as { sucursal_id?: string | null } | null)?.sucursal_id ?? null;
     setBranchId(bId);
 
     const todayStart = new Date();
@@ -124,8 +123,20 @@ function CommercialOrdersPageInner() {
         .eq('sucursal_id', bId)
         .order('creado_en', { ascending: false })
         .limit(80),
-      supabase.from('servicios').select('id, titulo, tiempo_servicio, precio, sucursal_id, activo').eq('activo', true).eq('sucursal_id', bId).order('creado_en', { ascending: false }).limit(200),
-      supabase.from('productos').select('id, titulo, precio, sucursal_id, activo').eq('activo', true).eq('sucursal_id', bId).order('creado_en', { ascending: false }).limit(300),
+      supabase
+        .from('servicios')
+        .select('id, titulo, tiempo_servicio, precio, sucursal_id, activo')
+        .eq('activo', true)
+        .eq('sucursal_id', bId)
+        .order('creado_en', { ascending: false })
+        .limit(200),
+      supabase
+        .from('productos')
+        .select('id, titulo, precio, sucursal_id, activo')
+        .eq('activo', true)
+        .eq('sucursal_id', bId)
+        .order('creado_en', { ascending: false })
+        .limit(300),
       supabase
         .from('ordenes')
         .select('id, usuario_id, estado, inicio, total')
@@ -224,7 +235,9 @@ function CommercialOrdersPageInner() {
         startAt: hasService ? startIso : undefined,
         endAt: hasService ? endIso : undefined,
         notes: createNotes || undefined,
-        items: items.map((it) => (it.type === 'service' ? { type: 'service', serviceId: it.serviceId!, quantity: it.quantity } : { type: 'product', productId: it.productId!, quantity: it.quantity })),
+        items: items.map((it) =>
+          it.type === 'service' ? { type: 'service', serviceId: it.serviceId!, quantity: it.quantity } : { type: 'product', productId: it.productId!, quantity: it.quantity }
+        ),
       });
 
       setCreateOpen(false);
@@ -365,9 +378,7 @@ function CommercialOrdersPageInner() {
                       </div>
                       <div className="shrink-0 text-right space-y-2">
                         <p className="text-sm font-semibold text-zinc-900">{formatMoney(o.total)}</p>
-                        <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-zinc-100 text-zinc-900">
-                          {statusLabel[o.status]}
-                        </span>
+                        <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-zinc-100 text-zinc-900">{statusLabel[o.status]}</span>
                       </div>
                     </button>
                   ))
@@ -599,10 +610,3 @@ function CommercialOrdersPageInner() {
   );
 }
 
-export default function CommercialOrdersPage() {
-  return (
-    <Suspense fallback={null}>
-      <CommercialOrdersPageInner />
-    </Suspense>
-  );
-}
