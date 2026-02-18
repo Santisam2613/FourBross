@@ -2,27 +2,24 @@
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-export async function getMyLoyaltyCards() {
+export async function getMiFidelidad() {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
-    .from('loyalty_cards')
-    .select('id, branch_id, points, stamps, tier, last_activity_at')
-    .is('deleted_at', null);
+    .from('ganadores_servicios')
+    .select('usuario_id, servicios_completados, disponible')
+    .single();
 
   if (error) throw new Error(error.message);
-  return data ?? [];
+  return data;
 }
 
-export async function getActiveRewards(branchId: string) {
+export async function getMonthlyWinners(monthIso: string) {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
-    .from('rewards')
-    .select('id, title, description, required_points, stock, starts_at, ends_at')
-    .eq('branch_id', branchId)
-    .eq('is_active', true)
-    .gt('stock', 0)
-    .is('deleted_at', null)
-    .order('required_points', { ascending: true });
+    .from('ganadores_mensuales')
+    .select('id, usuario_id, mes, reclamado, creado_en')
+    .eq('mes', monthIso)
+    .order('creado_en', { ascending: false });
 
   if (error) throw new Error(error.message);
   return data ?? [];

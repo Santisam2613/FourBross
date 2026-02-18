@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { MobileAppLayout } from '@/components/layout/MobileAppLayout';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { ArrowLeft, Mail } from 'lucide-react';
+import { ArrowLeft, Mail, Loader2 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 export default function ResetPasswordPage() {
@@ -64,7 +64,7 @@ export default function ResetPasswordPage() {
           </div>
 
           <Button className="w-full h-14 rounded-full text-base font-semibold" disabled={submitting}>
-            Enviar
+            {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Enviar'}
           </Button>
         </form>
       </div>

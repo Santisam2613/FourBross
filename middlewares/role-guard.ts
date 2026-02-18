@@ -3,37 +3,39 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { isRoleCode, roleHomePath, type RoleCode } from '@/types/roles';
 import { getPublicSupabaseAnonKey, getPublicSupabaseUrl } from '@/lib/env';
 
-export function createSupabaseMiddlewareClient(request: NextRequest, response: NextResponse) {
-  return createServerClient(getPublicSupabaseUrl(), getPublicSupabaseAnonKey(), {
+export function createSupabaseMiddlewareClient(request: NextRequest) {
+  let response = NextResponse.next({ request });
+  const supabase = createServerClient(getPublicSupabaseUrl(), getPublicSupabaseAnonKey(), {
     cookies: {
       getAll() {
         return request.cookies.getAll();
       },
       setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value, options }) => {
-          response.cookies.set(name, value, options);
-        });
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        response = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
       },
     },
   });
+
+  return { supabase, response };
 }
 
 export async function getUserRoleById(
-  supabase: ReturnType<typeof createSupabaseMiddlewareClient>,
+  supabase: ReturnType<typeof createSupabaseMiddlewareClient>['supabase'],
   userId: string
 ): Promise<RoleCode | null> {
-  const { data, error } = await supabase.from('profiles').select('role').eq('id', userId).single();
-  if (error || !data?.role) return null;
-  if (!isRoleCode(data.role)) return null;
-  return data.role;
+  const { data, error } = await supabase.from('usuarios').select('rol').eq('id', userId).single();
+  if (error || !data?.rol) return null;
+  if (!isRoleCode(data.rol)) return null;
+  return data.rol;
 }
 
 export async function guardRole(
   request: NextRequest,
   opts: { requiredRoles: RoleCode[]; loginPath?: string }
 ): Promise<NextResponse> {
-  const response = NextResponse.next();
-  const supabase = createSupabaseMiddlewareClient(request, response);
+  const { supabase, response } = createSupabaseMiddlewareClient(request);
 
   const { data } = await supabase.auth.getUser();
   const user = data.user;

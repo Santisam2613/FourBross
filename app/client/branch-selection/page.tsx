@@ -7,21 +7,22 @@ import { MobileAppLayout } from '@/components/layout/MobileAppLayout';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent } from '@/components/ui/Card';
-import { ArrowLeft, MapPin, Search, Star } from 'lucide-react';
+import { ArrowLeft, MapPin, Search, Star, Loader2 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 type Branch = {
   id: string;
-  name: string;
-  city: string;
-  address: string;
-  image_url?: string;
+  nombre: string;
+  ciudad: string;
+  direccion: string;
+  imagen?: string | null;
 };
 
 export default function BranchSelectionPage() {
   const router = useRouter();
   const [city, setCity] = useState('');
   const [loading, setLoading] = useState(true);
+  const [selectingBranchId, setSelectingBranchId] = useState<string | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -31,11 +32,10 @@ export default function BranchSelectionPage() {
       try {
         const supabase = createSupabaseBrowserClient();
         const { data } = await supabase
-          .from('branches')
-          .select('id, name, city, address, image_url')
-          .eq('is_active', true)
-          .is('deleted_at', null)
-          .order('name', { ascending: true });
+          .from('sucursales')
+          .select('id, nombre, ciudad, direccion, imagen, estado')
+          .eq('estado', 'activo')
+          .order('nombre', { ascending: true });
         setBranches((data ?? []) as Branch[]);
       } finally {
         setLoading(false);
@@ -48,12 +48,12 @@ export default function BranchSelectionPage() {
     const q = city.trim().toLowerCase();
     if (!q) return branches;
     return branches.filter(
-      (b) => b.city.toLowerCase().includes(q) || b.name.toLowerCase().includes(q)
+      (b) => b.ciudad.toLowerCase().includes(q) || b.nombre.toLowerCase().includes(q)
     );
   }, [branches, city]);
 
   const uniqueCities = useMemo(() => {
-    const cities = branches.map((b) => b.city);
+    const cities = branches.map((b) => b.ciudad);
     return Array.from(new Set(cities)).sort();
   }, [branches]);
 
@@ -64,14 +64,21 @@ export default function BranchSelectionPage() {
   }, [uniqueCities, city]);
 
   const selectBranch = async (branchId: string) => {
-    const supabase = createSupabaseBrowserClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      await supabase.from('profiles').update({ selected_branch_id: branchId }).eq('id', user.id);
+    if (selectingBranchId) return;
+    setSelectingBranchId(branchId);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('usuarios').update({ sucursal_id: branchId }).eq('id', user.id);
+      }
+      router.push('/client/home');
+    } catch (error) {
+      console.error('Error selecting branch:', error);
+      setSelectingBranchId(null);
     }
-    router.push('/client/home');
   };
 
   return (
@@ -164,28 +171,34 @@ export default function BranchSelectionPage() {
                 <button
                   key={branch.id}
                   type="button"
-                  className="block w-full text-left"
+                  className="block w-full text-left relative"
                   onClick={() => selectBranch(branch.id)}
+                  disabled={selectingBranchId !== null}
                 >
-                  <Card className="border-zinc-200 overflow-hidden shadow-sm">
+                  <Card className={`border-zinc-200 overflow-hidden shadow-sm transition-opacity ${selectingBranchId && selectingBranchId !== branch.id ? 'opacity-50' : ''}`}>
                     <div className="h-44 bg-zinc-200 relative">
                       <img
                         src={
-                          branch.image_url ||
+                          branch.imagen ||
                           'https://images.unsplash.com/photo-1585747860715-2ba37e788b70?q=80&w=1600&auto=format&fit=crop'
                         }
-                        alt={branch.name}
+                        alt={branch.nombre}
                         className="absolute inset-0 h-full w-full object-cover"
                       />
+                      {selectingBranchId === branch.id && (
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10">
+                          <Loader2 className="h-10 w-10 text-white animate-spin" />
+                        </div>
+                      )}
                     </div>
                     <CardContent className="p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
-                          <h3 className="font-bold text-zinc-900 truncate">{branch.name}</h3>
-                          <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{branch.address}</p>
+                          <h3 className="font-bold text-zinc-900 truncate">{branch.nombre}</h3>
+                          <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{branch.direccion}</p>
                         </div>
                         <div className="shrink-0 rounded-full bg-primary px-4 py-2 text-white text-sm font-semibold">
-                          {branch.city}
+                          {branch.ciudad}
                         </div>
                       </div>
                     </CardContent>

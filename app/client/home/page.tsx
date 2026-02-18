@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { MobileAppLayout } from '@/components/layout/MobileAppLayout';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
-import { Award, Scissors, Settings, ShoppingBag, Star, Store, ShoppingCart, User } from 'lucide-react';
+import { Award, Scissors, Settings, ShoppingBag, Star, Store, ShoppingCart, User, MapPin } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 export default function ClientHomePage() {
@@ -16,17 +16,48 @@ export default function ClientHomePage() {
   const [stamps, setStamps] = useState<number>(0);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [branchName, setBranchName] = useState<string>('');
+  const [branchAddress, setBranchAddress] = useState<string>('');
   const [branchImage, setBranchImage] = useState<string>('');
   const [services, setServices] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [cartCount, setCartCount] = useState(0);
+
+  useEffect(() => {
+    const updateCount = () => {
+      try {
+        const sRaw = window.localStorage.getItem('fourbross.cartServices');
+        const pRaw = window.localStorage.getItem('fourbross.cartProducts');
+        const s = sRaw ? JSON.parse(sRaw) : [];
+        const p = pRaw ? JSON.parse(pRaw) : [];
+        
+        let legacy = 0;
+        if (s.length === 0) {
+            if (window.localStorage.getItem('fourbross.orderDraft')) legacy = 1;
+        }
+
+        const productsCount = (p ?? []).reduce((acc: number, item: unknown) => {
+          if (!item || typeof item !== 'object') return acc + 1;
+          const qty = 'quantity' in item ? Number((item as { quantity?: unknown }).quantity ?? 1) : 1;
+          return acc + Math.max(1, qty);
+        }, 0);
+        setCartCount(s.length + productsCount + legacy);
+      } catch {
+        setCartCount(0);
+      }
+    };
+    
+    updateCount();
+    window.addEventListener('focus', updateCount);
+    return () => window.removeEventListener('focus', updateCount);
+  }, []);
   
-  const formatPrice = (cents: number) => {
+  const formatPrice = (value: number) => {
     return new Intl.NumberFormat('es-CO', {
       style: 'currency',
       currency: 'COP',
       minimumFractionDigits: 0,
-    }).format(cents / 100); // Asumiendo que guardamos centavos pero queremos mostrar pesos (dividir por 100 si son centavos reales, o ajustar según convención)
+    }).format(value);
   };
 
   const stampsProgress = useMemo(() => {
@@ -42,61 +73,60 @@ export default function ClientHomePage() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('first_name, last_name, selected_branch_id')
+        const { data: usuario } = await supabase
+          .from('usuarios')
+          .select('nombre, sucursal_id')
           .eq('id', user.id)
           .single();
 
-        const fullName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
-        setDisplayName(fullName);
+        setDisplayName(usuario?.nombre ?? '');
         
-        if (!profile?.selected_branch_id) {
+        if (!usuario?.sucursal_id) {
           router.push('/client/branch-selection');
           return;
         }
         
-        setSelectedBranchId(profile.selected_branch_id);
+        setSelectedBranchId(usuario.sucursal_id);
 
-        if (profile.selected_branch_id) {
+        if (usuario.sucursal_id) {
           const [
             { data: branch },
             { data: sData },
             { data: pData },
-            { data: card }
+            { data: loyalty }
           ] = await Promise.all([
             supabase
-              .from('branches')
-              .select('name, image_url')
-              .eq('id', profile.selected_branch_id)
+              .from('sucursales')
+              .select('nombre, imagen, direccion')
+              .eq('id', usuario.sucursal_id)
               .single(),
             supabase
-              .from('services')
+              .from('servicios')
               .select('*')
-              .eq('branch_id', profile.selected_branch_id)
-              .eq('is_active', true)
-              .order('name'),
+              .eq('sucursal_id', usuario.sucursal_id)
+              .eq('activo', true)
+              .order('titulo'),
             supabase
-              .from('products')
+              .from('productos')
               .select('*')
-              .eq('branch_id', profile.selected_branch_id)
-              .eq('is_active', true)
-              .order('name'),
+              .eq('sucursal_id', usuario.sucursal_id)
+              .eq('activo', true)
+              .order('titulo'),
             supabase
-              .from('loyalty_cards')
-              .select('stamps')
-              .eq('client_id', user.id)
-              .eq('branch_id', profile.selected_branch_id)
-              .maybeSingle()
+              .from('ganadores_servicios')
+              .select('servicios_completados, disponible')
+              .eq('usuario_id', user.id)
+              .single()
           ]);
 
           if (branch) {
-            setBranchName(branch.name);
-            setBranchImage(branch.image_url || '');
+            setBranchName(branch.nombre);
+            setBranchImage(branch.imagen || '');
+            setBranchAddress(branch.direccion || '');
           }
           setServices(sData || []);
           setProducts(pData || []);
-          setStamps(card?.stamps ?? 0);
+          setStamps(loyalty?.servicios_completados ?? 0);
         }
       } finally {
         setLoading(false);
@@ -106,11 +136,11 @@ export default function ClientHomePage() {
   }, []);
   const openActive = () => {
     if (active === 'services') {
-      router.push('/client/service-detail');
+      // No hacemos nada, ya que el detalle depende del servicio seleccionado
       return;
     }
     if (active === 'products') {
-      router.push('/client/products/1');
+      // Igual, depende del producto
       return;
     }
     if (active === 'branch') {
@@ -161,7 +191,13 @@ export default function ClientHomePage() {
               </div>
               <div>
                 <h2 className="font-bold text-lg leading-none">{`Hola, ${displayName || ''}`}</h2>
-                <p className="text-xs text-zinc-500">Bienvenido donde el estilo cobra vida</p>
+                {branchName && (
+                  <div className="flex items-center gap-1 mt-1 text-xs text-zinc-500">
+                    <MapPin className="h-3 w-3 text-primary" />
+                    <span>{branchName}</span>
+                    {branchAddress && <span className="text-zinc-400">• {branchAddress}</span>}
+                  </div>
+                )}
               </div>
             </div>
             <Link href="/client/profile">
@@ -254,28 +290,28 @@ export default function ClientHomePage() {
                   <button
                     key={service.id}
                     className="block w-full text-left"
-                    onClick={() => router.push('/client/service-detail')}
+                    onClick={() => router.push(`/client/service-detail/${service.id}`)}
                   >
                     <Card className="border-zinc-200 overflow-hidden rounded-3xl shadow-sm">
                       <div className="h-52 bg-zinc-200 relative">
                         <img
-                          src={service.image_url || 'https://images.unsplash.com/photo-1585747860715-2ba37e788b70?q=80&w=1600&auto=format&fit=crop'}
-                          alt={service.name}
+                          src={service.imagen || 'https://images.unsplash.com/photo-1585747860715-2ba37e788b70?q=80&w=1600&auto=format&fit=crop'}
+                          alt={service.titulo}
                           className="absolute inset-0 h-full w-full object-cover"
                         />
                       </div>
                       <CardContent className="p-5">
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0">
-                            <h3 className="font-bold text-zinc-900 truncate">{service.name}</h3>
-                            <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{service.description}</p>
+                            <h3 className="font-bold text-zinc-900 truncate">{service.titulo}</h3>
+                            <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{service.descripcion}</p>
                           </div>
                           <div className="shrink-0 rounded-full bg-primary px-4 py-2 text-white text-sm font-semibold">
-                            {formatPrice(service.price_cents)}
+                            {formatPrice(Number(service.precio))}
                           </div>
                         </div>
                         <div className="mt-3">
-                          <span className="text-xs text-zinc-500">{service.duration_minutes} min</span>
+                          <span className="text-xs text-zinc-500">{service.tiempo_servicio} min</span>
                         </div>
                       </CardContent>
                     </Card>
@@ -307,19 +343,19 @@ export default function ClientHomePage() {
                     <Card className="border-zinc-200 overflow-hidden rounded-3xl shadow-sm">
                       <div className="h-52 bg-zinc-200 relative">
                         <img
-                          src={product.image_url || 'https://images.unsplash.com/photo-1515378791036-0648a3ef77b2?q=80&w=1600&auto=format&fit=crop'}
-                          alt={product.name}
+                          src={product.imagen || 'https://images.unsplash.com/photo-1515378791036-0648a3ef77b2?q=80&w=1600&auto=format&fit=crop'}
+                          alt={product.titulo}
                           className="absolute inset-0 h-full w-full object-cover"
                         />
                       </div>
                       <CardContent className="p-5">
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0">
-                            <h3 className="font-bold text-zinc-900 truncate">{product.name}</h3>
-                            <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{product.description}</p>
+                            <h3 className="font-bold text-zinc-900 truncate">{product.titulo}</h3>
+                            <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{product.descripcion}</p>
                           </div>
                           <div className="shrink-0 rounded-full bg-primary px-4 py-2 text-white text-sm font-semibold">
-                            {formatPrice(product.price_cents)}
+                            {formatPrice(Number(product.precio))}
                           </div>
                         </div>
                       </CardContent>
@@ -390,13 +426,15 @@ export default function ClientHomePage() {
         </section>
       </div>
 
-      <div className="fixed bottom-6 left-0 right-0 md:max-w-[430px] md:mx-auto px-6 flex justify-end pointer-events-none">
+      <div className="fixed bottom-6 left-0 right-0 md:max-w-[430px] md:mx-auto px-6 flex justify-end pointer-events-none z-50">
         <Link href="/client/cart" className="pointer-events-auto">
           <div className="relative h-14 w-14 rounded-full bg-primary text-white shadow-lg flex items-center justify-center">
             <ShoppingCart className="h-6 w-6" />
-            <div className="absolute -top-1 -right-1 h-6 w-6 rounded-full bg-black text-white text-xs font-bold flex items-center justify-center border-2 border-white">
-              1
-            </div>
+            {cartCount > 0 && (
+              <div className="absolute -top-1 -right-1 h-6 w-6 rounded-full bg-black text-white text-xs font-bold flex items-center justify-center border-2 border-white">
+                {cartCount}
+              </div>
+            )}
           </div>
         </Link>
       </div>

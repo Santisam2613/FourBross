@@ -1,25 +1,26 @@
-"use client";
-
-import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
 import { MobileAppLayout } from '@/components/layout/MobileAppLayout';
 import { Card, CardContent } from '@/components/ui/Card';
 import { ArrowLeft, Calendar, Clock, MapPin, Scissors, ShoppingBag, User } from 'lucide-react';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { BackButton } from '@/components/ui/BackButton';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 type OrderStatus = 'reservada' | 'proceso' | 'completada' | 'cancelada';
 
 type OrderItem = {
   title: string;
-  price: number;
+  quantity: number;
+  unitPrice: number;
+  total: number;
 };
 
 type OrderDetail = {
   id: string;
   status: OrderStatus;
   branch: string;
+  branchAddress: string;
   barber: string;
+  hasBarber: boolean;
   dateLabel: string;
   timeLabel: string;
   services: OrderItem[];
@@ -40,119 +41,17 @@ const statusClassName: Record<OrderStatus, string> = {
   cancelada: 'bg-red-600 text-white',
 };
 
-export default function OrderDetailPage() {
-  const params = useParams<{ id: string }>();
-  const [order, setOrder] = useState<OrderDetail | null>(null);
+export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const supabase = await createSupabaseServerClient();
+  const { id } = await params;
 
-  useEffect(() => {
-    const run = async () => {
-      const id = params?.id;
-      if (!id) return;
-      const supabase = createSupabaseBrowserClient();
+  const { data: o, error: orderError } = await supabase
+    .from('ordenes')
+    .select('id, estado, sucursal_id, barbero_id, inicio, creado_en, total')
+    .eq('id', id)
+    .single();
 
-      const { data: o } = await supabase
-        .from('orders')
-        .select('id, status, branch_id, staff_id, appointment_start')
-        .eq('id', id)
-        .single();
-
-      if (!o) return;
-
-      const startAt = new Date((o as any).appointment_start as string);
-
-      const { data: branch } = await supabase
-        .from('branches')
-        .select('name')
-        .eq('id', (o as any).branch_id as string)
-        .single();
-
-      const staffId = (o as any).staff_id as string | null;
-      const { data: staff } = staffId
-        ? await supabase.from('profiles').select('first_name, last_name').eq('id', staffId).single()
-        : { data: null };
-
-      const barberName = staff ? [staff.first_name, staff.last_name].filter(Boolean).join(' ') : '';
-
-      const { data: items } = await supabase
-        .from('order_items')
-        .select('item_type, service_id, product_id, quantity, subtotal_cents')
-        .eq('order_id', id)
-        .is('deleted_at', null);
-
-      const serviceIds = (items ?? [])
-        .filter((i: any) => i.item_type === 'service' && i.service_id)
-        .map((i: any) => i.service_id as string);
-
-      const productIds = (items ?? [])
-        .filter((i: any) => i.item_type === 'product' && i.product_id)
-        .map((i: any) => i.product_id as string);
-
-      const serviceNameById = new Map<string, string>();
-      const productNameById = new Map<string, string>();
-
-      if (serviceIds.length) {
-        const { data: rows } = await supabase.from('services').select('id, name').in('id', serviceIds);
-        for (const r of rows ?? []) serviceNameById.set((r as any).id, (r as any).name);
-      }
-
-      if (productIds.length) {
-        const { data: rows } = await supabase.from('products').select('id, name').in('id', productIds);
-        for (const r of rows ?? []) productNameById.set((r as any).id, (r as any).name);
-      }
-
-      const services: OrderItem[] = [];
-      const products: OrderItem[] = [];
-
-      for (const item of items ?? []) {
-        const qty = (item as any).quantity ?? 1;
-        const subtotal = ((item as any).subtotal_cents ?? 0) / 100;
-        const unitPrice = qty > 0 ? subtotal / qty : subtotal;
-
-        if ((item as any).item_type === 'service') {
-          services.push({
-            title: serviceNameById.get((item as any).service_id as string) ?? 'Servicio',
-            price: unitPrice,
-          });
-        } else {
-          products.push({
-            title: productNameById.get((item as any).product_id as string) ?? 'Producto',
-            price: unitPrice,
-          });
-        }
-      }
-
-      const status = String((o as any).status) as 'pending' | 'confirmed' | 'completed' | 'cancelled';
-      const uiStatus: OrderStatus =
-        status === 'pending'
-          ? 'reservada'
-          : status === 'confirmed'
-            ? 'proceso'
-            : status === 'completed'
-              ? 'completada'
-              : 'cancelada';
-
-      setOrder({
-        id: (o as any).id as string,
-        status: uiStatus,
-        branch: (branch?.name as string) ?? '',
-        barber: barberName,
-        dateLabel: startAt.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }),
-        timeLabel: startAt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-        services,
-        products,
-      });
-    };
-
-    void run();
-  }, [params?.id]);
-
-  const totals = useMemo(() => {
-    const servicesTotal = (order?.services ?? []).reduce((s, i) => s + i.price, 0);
-    const productsTotal = (order?.products ?? []).reduce((s, i) => s + i.price, 0);
-    return { servicesTotal, productsTotal, total: servicesTotal + productsTotal };
-  }, [order?.products, order?.services]);
-
-  if (!order) {
+  if (orderError || !o) {
     return (
       <MobileAppLayout outerClassName="bg-black" className="bg-black">
         <div className="px-6 pt-8 pb-6 flex items-center justify-center relative">
@@ -171,66 +70,170 @@ export default function OrderDetailPage() {
     );
   }
 
+  const hasBarber = Boolean((o as any).barbero_id);
+  const referenceAt = hasBarber
+    ? new Date((o as any).inicio as string)
+    : new Date(((o as any).creado_en as string | null) ?? ((o as any).inicio as string));
+  const formatTime12 = (d: Date) => {
+    const h = d.getHours();
+    const m = d.getMinutes();
+    const period = h >= 12 ? 'pm' : 'am';
+    const hours12 = h % 12 || 12;
+    return `${hours12}:${String(m).padStart(2, '0')} ${period}`;
+  };
+
+  const [{ data: branch }, { data: staff }, { data: items }] = await Promise.all([
+    supabase.from('sucursales').select('nombre, direccion').eq('id', (o as any).sucursal_id as string).single(),
+    (o as any).barbero_id
+      ? supabase.from('usuarios').select('nombre').eq('id', (o as any).barbero_id as string).single()
+      : Promise.resolve({ data: null } as any),
+    supabase.from('orden_detalle').select('tipo, referencia_id, cantidad, precio_unitario').eq('orden_id', id),
+  ]);
+
+  const serviceIds = Array.from(
+    new Set(
+      (items ?? [])
+        .filter((i: any) => i.tipo === 'servicio' && i.referencia_id)
+        .map((i: any) => i.referencia_id as string)
+    )
+  );
+  const productIds = Array.from(
+    new Set(
+      (items ?? [])
+        .filter((i: any) => i.tipo === 'producto' && i.referencia_id)
+        .map((i: any) => i.referencia_id as string)
+    )
+  );
+
+  const [serviceRows, productRows] = await Promise.all([
+    serviceIds.length ? supabase.from('servicios').select('id, titulo').in('id', serviceIds) : Promise.resolve({ data: [] } as any),
+    productIds.length ? supabase.from('productos').select('id, titulo').in('id', productIds) : Promise.resolve({ data: [] } as any),
+  ]);
+
+  const serviceNameById = new Map<string, string>();
+  for (const r of serviceRows.data ?? []) serviceNameById.set((r as any).id, (r as any).titulo);
+  const productNameById = new Map<string, string>();
+  for (const r of productRows.data ?? []) productNameById.set((r as any).id, (r as any).titulo);
+
+  const services: OrderItem[] = [];
+  const products: OrderItem[] = [];
+  for (const item of items ?? []) {
+    const unitPrice = Number((item as any).precio_unitario ?? 0);
+    const quantity = Math.max(1, Number((item as any).cantidad ?? 1));
+    const total = unitPrice * quantity;
+    if ((item as any).tipo === 'servicio') {
+      services.push({
+        title: serviceNameById.get((item as any).referencia_id as string) ?? 'Servicio',
+        quantity,
+        unitPrice,
+        total,
+      });
+    } else {
+      products.push({
+        title: productNameById.get((item as any).referencia_id as string) ?? 'Producto',
+        quantity,
+        unitPrice,
+        total,
+      });
+    }
+  }
+
+  const status = String((o as any).estado) as 'agendado' | 'proceso' | 'completado' | 'pagado' | 'cancelado';
+  const uiStatus: OrderStatus =
+    status === 'agendado'
+      ? 'reservada'
+      : status === 'proceso'
+        ? 'proceso'
+        : status === 'completado' || status === 'pagado'
+          ? 'completada'
+          : 'cancelada';
+
+  const order: OrderDetail = {
+    id: (o as any).id as string,
+    status: uiStatus,
+    branch: (branch as any)?.nombre ?? '',
+    branchAddress: (branch as any)?.direccion ?? '',
+    barber: (staff as any)?.nombre ?? '',
+    hasBarber,
+    dateLabel: referenceAt.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }),
+    timeLabel: formatTime12(referenceAt),
+    services,
+    products,
+  };
+
+  const servicesTotal = services.reduce((s, i) => s + i.total, 0);
+  const productsTotal = products.reduce((s, i) => s + i.total, 0);
+  const totals = { servicesTotal, productsTotal, total: Number((o as any).total ?? servicesTotal + productsTotal) };
+  const formatMoney = (n: number) =>
+    new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n);
+
   return (
     <MobileAppLayout outerClassName="bg-black" className="bg-black">
       <div className="px-6 pt-8 pb-6 flex items-center justify-center relative">
-        <Link
-          href="/client/orders"
+        <BackButton
           className="absolute left-6 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full border border-white/20 flex items-center justify-center text-white"
           aria-label="Volver"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
+        />
+        <h1 className="text-white text-xl font-semibold tracking-tight">Detalle de orden</h1>
       </div>
 
-      <div className="bg-white rounded-t-[56px] flex-1 px-7 pt-10 pb-10 space-y-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-3xl font-semibold tracking-tight text-zinc-900">Detalle de orden</h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              <span className="font-medium">Order #:</span> <span className="text-primary font-semibold">{order.id}</span>
-            </p>
-          </div>
-          <div className={`shrink-0 px-5 py-2 rounded-full text-sm font-semibold ${statusClassName[order.status]}`}>
-            {statusLabel[order.status]}
-          </div>
-        </div>
+      <div className="bg-white rounded-t-[56px] flex-1 px-7 pt-8 pb-10 space-y-6">
+        <Card className="border-zinc-200 rounded-3xl overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-widest text-zinc-500">{order.hasBarber ? 'Servicio' : 'Compra'}</p>
+                <p className="mt-1 text-xl font-semibold tracking-tight text-zinc-900">Orden</p>
+                <p className="mt-2 text-xs text-zinc-500 break-all">{order.id}</p>
+              </div>
+              <div className={`shrink-0 px-4 py-2 rounded-full text-xs font-semibold ${statusClassName[order.status]}`}>
+                {statusLabel[order.status]}
+              </div>
+            </div>
 
-        <Card className="border-zinc-200 rounded-2xl">
-          <CardContent className="p-4 space-y-3">
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-zinc-200 p-3">
+                <p className="text-xs text-zinc-500">Total</p>
+                <p className="mt-1 text-2xl font-semibold text-zinc-900">{formatMoney(totals.total)}</p>
+              </div>
+              <div className="rounded-2xl border border-zinc-200 p-3">
+                <p className="text-xs text-zinc-500">Fecha y hora</p>
+                <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-zinc-900">
+                  <Calendar className="h-4 w-4 text-primary" />
+                  <span>{order.dateLabel}</span>
+                </div>
+                <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-zinc-900">
+                  <Clock className="h-4 w-4 text-primary" />
+                  <span>{order.timeLabel}</span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-zinc-200 rounded-3xl">
+          <CardContent className="p-5 space-y-4">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-xl bg-zinc-100 flex items-center justify-center text-primary">
                 <MapPin className="h-5 w-5" />
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-zinc-900">{order.branch}</p>
-                <p className="text-xs text-zinc-500">Sucursal</p>
+                <p className="text-xs text-zinc-500 truncate">{order.branchAddress || 'Sucursal'}</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-zinc-200 p-3 flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-primary" />
-                <div>
-                  <p className="text-xs text-zinc-500">Fecha</p>
-                  <p className="text-sm font-semibold text-zinc-900">{order.dateLabel}</p>
+            {order.hasBarber ? (
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-zinc-100 flex items-center justify-center text-primary">
+                  <User className="h-5 w-5" />
                 </div>
-              </div>
-              <div className="rounded-2xl border border-zinc-200 p-3 flex items-center gap-2">
-                <Clock className="h-4 w-4 text-primary" />
-                <div>
-                  <p className="text-xs text-zinc-500">Hora</p>
-                  <p className="text-sm font-semibold text-zinc-900">{order.timeLabel}</p>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-zinc-200 p-3 flex items-center gap-2 col-span-2">
-                <User className="h-4 w-4 text-primary" />
-                <div>
-                  <p className="text-xs text-zinc-500">Colaborador</p>
+                <div className="min-w-0">
                   <p className="text-sm font-semibold text-zinc-900">{order.barber}</p>
+                  <p className="text-xs text-zinc-500">Barbero</p>
                 </div>
               </div>
-            </div>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -239,18 +242,25 @@ export default function OrderDetailPage() {
             <Scissors className="h-5 w-5 text-primary" />
             <h2 className="text-lg font-semibold text-zinc-900">Servicios</h2>
           </div>
-          <Card className="border-zinc-200 rounded-2xl">
-            <CardContent className="p-4 space-y-3">
-              {order.services.map((s, idx) => (
-                <div key={idx} className="flex items-center justify-between gap-4">
-                  <p className="text-sm font-medium text-zinc-900">{s.title}</p>
-                  <p className="text-sm font-semibold text-zinc-900">{`$${s.price.toFixed(2)}`}</p>
-                </div>
-              ))}
+          <Card className="border-zinc-200 rounded-3xl">
+            <CardContent className="p-5 space-y-3">
+              {order.services.length === 0 ? (
+                <p className="text-sm text-zinc-500">No se reservaron servicios.</p>
+              ) : (
+                order.services.map((s, idx) => (
+                  <div key={idx} className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-zinc-900 truncate">{s.title}</p>
+                      <p className="mt-1 text-xs text-zinc-500">{`${s.quantity} × ${formatMoney(s.unitPrice)}`}</p>
+                    </div>
+                    <p className="text-sm font-semibold text-zinc-900">{formatMoney(s.total)}</p>
+                  </div>
+                ))
+              )}
               <div className="h-px bg-zinc-100" />
               <div className="flex items-center justify-between">
                 <p className="text-sm text-zinc-500">Subtotal servicios</p>
-                <p className="text-sm font-semibold text-zinc-900">{`$${totals.servicesTotal.toFixed(2)}`}</p>
+                <p className="text-sm font-semibold text-zinc-900">{formatMoney(totals.servicesTotal)}</p>
               </div>
             </CardContent>
           </Card>
@@ -261,31 +271,34 @@ export default function OrderDetailPage() {
             <ShoppingBag className="h-5 w-5 text-primary" />
             <h2 className="text-lg font-semibold text-zinc-900">Productos</h2>
           </div>
-          <Card className="border-zinc-200 rounded-2xl">
-            <CardContent className="p-4 space-y-3">
+          <Card className="border-zinc-200 rounded-3xl">
+            <CardContent className="p-5 space-y-3">
               {order.products.length === 0 ? (
                 <p className="text-sm text-zinc-500">No se compraron productos.</p>
               ) : (
                 order.products.map((p, idx) => (
-                  <div key={idx} className="flex items-center justify-between gap-4">
-                    <p className="text-sm font-medium text-zinc-900">{p.title}</p>
-                    <p className="text-sm font-semibold text-zinc-900">{`$${p.price.toFixed(2)}`}</p>
+                  <div key={idx} className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-zinc-900 truncate">{p.title}</p>
+                      <p className="mt-1 text-xs text-zinc-500">{`${p.quantity} × ${formatMoney(p.unitPrice)}`}</p>
+                    </div>
+                    <p className="text-sm font-semibold text-zinc-900">{formatMoney(p.total)}</p>
                   </div>
                 ))
               )}
               <div className="h-px bg-zinc-100" />
               <div className="flex items-center justify-between">
                 <p className="text-sm text-zinc-500">Subtotal productos</p>
-                <p className="text-sm font-semibold text-zinc-900">{`$${totals.productsTotal.toFixed(2)}`}</p>
+                <p className="text-sm font-semibold text-zinc-900">{formatMoney(totals.productsTotal)}</p>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <Card className="border-zinc-200 rounded-2xl">
-          <CardContent className="p-4 flex items-center justify-between">
+        <Card className="border-zinc-200 rounded-3xl">
+          <CardContent className="p-5 flex items-center justify-between">
             <p className="text-lg font-semibold text-zinc-900">Total</p>
-            <p className="text-lg font-semibold text-zinc-900">{`$${totals.total.toFixed(2)}`}</p>
+            <p className="text-lg font-semibold text-zinc-900">{formatMoney(totals.total)}</p>
           </CardContent>
         </Card>
       </div>

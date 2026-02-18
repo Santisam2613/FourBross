@@ -13,8 +13,10 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 export default function ProfilePage() {
   const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [logoutSheetOpen, setLogoutSheetOpen] = useState(false);
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [phoneDigits, setPhoneDigits] = useState('');
+  const [countryCode, setCountryCode] = useState('+57');
 
   useEffect(() => {
     if (!sheetOpen) return;
@@ -24,15 +26,15 @@ export default function ProfilePage() {
       const user = data.user;
       if (!user) return;
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('first_name, last_name, phone')
+      const { data: usuario } = await supabase
+        .from('usuarios')
+        .select('nombre, telefono')
         .eq('id', user.id)
         .single();
 
-      const fullName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
-      setName(fullName);
-      setPhone(profile?.phone ?? '');
+      setName(usuario?.nombre ?? '');
+      const raw = String(usuario?.telefono ?? '');
+      setPhoneDigits(raw.startsWith('+57') ? raw.slice(3) : raw.replace(/\D/g, '').slice(-10));
     };
 
     void run();
@@ -44,10 +46,11 @@ export default function ProfilePage() {
     const user = data.user;
     if (!user) return;
 
-    await supabase
-      .from('profiles')
-      .update({ first_name: name.trim(), last_name: null, phone: phone.trim() || null })
-      .eq('id', user.id);
+    const digits = phoneDigits.trim().replace(/\D/g, '');
+    const normalizedPhone = digits ? `${countryCode}${digits}` : null;
+    if (digits && digits.length !== 10) return;
+
+    await supabase.from('usuarios').update({ nombre: name.trim(), telefono: normalizedPhone }).eq('id', user.id);
 
     setSheetOpen(false);
   };
@@ -56,6 +59,10 @@ export default function ProfilePage() {
     const supabase = createSupabaseBrowserClient();
     await supabase.auth.signOut();
     router.push('/auth/login');
+  };
+
+  const handleLogoutClick = () => {
+    setLogoutSheetOpen(true);
   };
 
   return (
@@ -152,7 +159,7 @@ export default function ProfilePage() {
               </Card>
             </Link>
 
-            <button type="button" className="block w-full text-left" onClick={signOut}>
+            <button type="button" className="block w-full text-left" onClick={handleLogoutClick}>
               <Card className="border-zinc-200 rounded-2xl">
                 <CardContent className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -198,12 +205,25 @@ export default function ProfilePage() {
                   onChange={(e) => setName(e.target.value)}
                   className="h-12 rounded-2xl"
                 />
-                <Input
-                  placeholder="Numero de telefono"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="h-12 rounded-2xl"
-                />
+                <div className="flex gap-3">
+                  <select
+                    value={countryCode}
+                    onChange={(e) => setCountryCode(e.target.value)}
+                    className="h-12 w-20 rounded-2xl border-0 bg-zinc-100 px-3 text-zinc-900 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-0"
+                  >
+                    <option value="+57">+57</option>
+                  </select>
+                  <Input
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    placeholder="3001234567"
+                    value={phoneDigits}
+                    maxLength={10}
+                    onChange={(e) => setPhoneDigits(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    className="h-12 rounded-2xl"
+                  />
+                </div>
               </div>
 
               <div className="flex items-center gap-3">
@@ -214,6 +234,42 @@ export default function ProfilePage() {
                   Guardar
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {logoutSheetOpen ? (
+        <div className="fixed inset-0 z-50">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/60"
+            aria-label="Cerrar"
+            onClick={() => setLogoutSheetOpen(false)}
+          />
+          <div className="absolute left-0 right-0 bottom-0 md:max-w-[430px] md:mx-auto bg-white rounded-t-3xl border-t border-zinc-100 p-6 pb-8 space-y-6">
+            <div className="text-center space-y-2">
+              <div className="h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto text-primary mb-4">
+                <LogOut className="h-8 w-8" />
+              </div>
+              <h3 className="text-xl font-bold text-zinc-900">¿Cerrar sesión?</h3>
+              <p className="text-zinc-500">¿Estás seguro que deseas salir de tu cuenta?</p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <Button 
+                className="w-full h-14 rounded-full bg-primary hover:bg-primary/90 text-white font-semibold text-base"
+                onClick={signOut}
+              >
+                Sí, cerrar sesión
+              </Button>
+              <Button 
+                variant="outline" 
+                className="w-full h-14 rounded-full font-semibold text-base border-zinc-200"
+                onClick={() => setLogoutSheetOpen(false)}
+              >
+                Cancelar
+              </Button>
             </div>
           </div>
         </div>

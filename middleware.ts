@@ -9,15 +9,18 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith('/commercial')) {
-    return guardRole(request, { requiredRoles: ['commercial', 'admin'] });
+    return guardRole(request, { requiredRoles: ['comercial', 'admin'] });
   }
 
   if (pathname.startsWith('/barber')) {
-    return guardRole(request, { requiredRoles: ['barber', 'admin'] });
+    return guardRole(request, { requiredRoles: ['barbero', 'admin'] });
   }
 
   if (pathname.startsWith('/client')) {
-    return guardRole(request, { requiredRoles: ['client', 'admin'] });
+    if (pathname.startsWith('/client/orders')) {
+      return guardRole(request, { requiredRoles: ['cliente', 'barbero', 'admin'] });
+    }
+    return guardRole(request, { requiredRoles: ['cliente', 'admin'] });
   }
 
   return NextResponse.next();

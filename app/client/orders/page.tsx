@@ -1,15 +1,12 @@
-"use client";
-
-import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { MobileAppLayout } from '@/components/layout/MobileAppLayout';
 import { Card, CardContent } from '@/components/ui/Card';
-import { ArrowLeft } from 'lucide-react';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { BackButton } from '@/components/ui/BackButton';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 type OrderStatus = 'reservada' | 'proceso' | 'completada' | 'cancelada';
 
-type Order = {
+type OrderRow = {
   id: string;
   createdAtLabel: string;
   total: number;
@@ -30,66 +27,37 @@ const statusClassName: Record<OrderStatus, string> = {
   cancelada: 'bg-red-600 text-white',
 };
 
-export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
+export default async function OrdersPage() {
+  const supabase = await createSupabaseServerClient();
+  const { data: rows, error } = await supabase
+    .from('ordenes')
+    .select('id, estado, creado_en, total')
+    .order('creado_en', { ascending: false });
 
-  useEffect(() => {
-    const run = async () => {
-      const supabase = createSupabaseBrowserClient();
-      const { data: rows } = await supabase
-        .from('orders')
-        .select('id, status, created_at')
-        .order('created_at', { ascending: false })
-        .is('deleted_at', null);
+  if (error) throw new Error(error.message);
 
-      const ids = (rows ?? []).map((r: any) => r.id as string);
-      const totalsByOrder = new Map<string, number>();
-      if (ids.length) {
-        const { data: items } = await supabase
-          .from('order_items')
-          .select('order_id, subtotal_cents')
-          .in('order_id', ids)
-          .is('deleted_at', null);
-
-        for (const item of items ?? []) {
-          const orderId = (item as any).order_id as string;
-          const subtotal = ((item as any).subtotal_cents as number) ?? 0;
-          totalsByOrder.set(orderId, (totalsByOrder.get(orderId) ?? 0) + subtotal);
-        }
-      }
-
-      const mapped = (rows ?? []).map((r: any) => {
-        const createdAt = new Date(r.created_at as string);
-        const createdAtLabel = createdAt.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
-        const status = String(r.status) as 'pending' | 'confirmed' | 'completed' | 'cancelled';
-        const uiStatus: OrderStatus =
-          status === 'pending'
-            ? 'reservada'
-            : status === 'confirmed'
-              ? 'proceso'
-              : status === 'completed'
-                ? 'completada'
-                : 'cancelada';
-        const total = (totalsByOrder.get(r.id as string) ?? 0) / 100;
-        return { id: r.id as string, createdAtLabel, total, status: uiStatus } satisfies Order;
-      });
-
-      setOrders(mapped);
-    };
-
-    void run();
-  }, []);
+  const orders: OrderRow[] = (rows ?? []).map((r: any) => {
+    const createdAt = new Date(r.creado_en as string);
+    const createdAtLabel = createdAt.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+    const status = String(r.estado) as 'agendado' | 'proceso' | 'completado' | 'pagado' | 'cancelado';
+    const uiStatus: OrderStatus =
+      status === 'agendado'
+        ? 'reservada'
+        : status === 'proceso'
+          ? 'proceso'
+          : status === 'completado' || status === 'pagado'
+            ? 'completada'
+            : 'cancelada';
+    return { id: r.id as string, createdAtLabel, total: Number(r.total ?? 0), status: uiStatus };
+  });
 
   return (
     <MobileAppLayout outerClassName="bg-black" className="bg-black">
       <div className="px-6 pt-8 pb-6 flex items-center justify-center relative">
-        <Link
-          href="/client/profile"
+        <BackButton
           className="absolute left-6 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full border border-white/20 flex items-center justify-center text-white"
           aria-label="Volver"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
+        />
       </div>
 
       <div className="bg-white rounded-t-[56px] flex-1 px-7 pt-10 pb-10">
@@ -109,7 +77,9 @@ export default function OrdersPage() {
                   </div>
 
                   <div className="shrink-0 text-right space-y-3">
-                    <p className="text-2xl font-semibold text-zinc-900">{`$${o.total.toFixed(2)}`}</p>
+                    <p className="text-2xl font-semibold text-zinc-900">
+                      {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(o.total)}
+                    </p>
                     <div className={`inline-flex px-5 py-2 rounded-full text-sm font-semibold ${statusClassName[o.status]}`}>
                       {statusLabel[o.status]}
                     </div>

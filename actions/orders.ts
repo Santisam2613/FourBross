@@ -1,7 +1,6 @@
 "use server";
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { getPublicSupabaseUrl } from '@/lib/env';
 
 export type CreateOrderItem =
   | { type: 'service'; serviceId: string; quantity?: number }
@@ -9,57 +8,77 @@ export type CreateOrderItem =
 
 export type CreateOrderInput = {
   branchId: string;
-  staffId: string;
-  startAt: string;
-  endAt: string;
+  staffId?: string | null;
+  startAt?: string;
+  endAt?: string;
   notes?: string;
   clientId?: string;
   items?: CreateOrderItem[];
 };
 
-async function getAccessToken() {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.getSession();
-  if (error) throw new Error(error.message);
-  const token = data.session?.access_token;
-  if (!token) throw new Error('Unauthorized');
-  return token;
-}
-
 async function callEdgeFunction<T>(name: string, payload: unknown) {
-  const url = getPublicSupabaseUrl();
-
-  const token = await getAccessToken();
-
-  const res = await fetch(`${url}/functions/v1/${name}`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-    cache: 'no-store',
-  });
-
-  const json = (await res.json().catch(() => null)) as T | { error?: string } | null;
-  if (!res.ok) {
-    const message = (json as { error?: string } | null)?.error ?? `Edge function error (${res.status})`;
-    throw new Error(message);
-  }
-  return json as T;
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.functions.invoke(name, { body: payload as any });
+  if (error) throw new Error(error.message);
+  return data as T;
 }
 
 export async function createOrder(input: CreateOrderInput) {
-  const data = await callEdgeFunction<{ orderId: string }>('create-order', input);
-  return data.orderId;
+  const supabase = await createSupabaseServerClient();
+
+  const items = input.items ?? [];
+  if (!input.branchId) throw new Error('Missing branchId');
+  if (items.length === 0) throw new Error('Missing items');
+
+  const hasService = items.some((it) => it.type === 'service');
+  let staffId = input.staffId ?? null;
+  let startAt = input.startAt;
+  let endAt = input.endAt;
+
+  if (hasService) {
+    if (!staffId || !startAt || !endAt) throw new Error('Missing required fields');
+  } else {
+    staffId = null;
+    const start = new Date();
+    const end = new Date(start.getTime() + 60 * 1000);
+    startAt = start.toISOString();
+    endAt = end.toISOString();
+  }
+
+  const rpcItems = items.map((item) => {
+    const cantidad = Math.max(1, item.quantity ?? 1);
+    if (item.type === 'service') {
+      return { tipo: 'servicio', referencia_id: item.serviceId, cantidad };
+    }
+    return { tipo: 'producto', referencia_id: item.productId, cantidad };
+  });
+
+  const { data, error } = await supabase.rpc('crear_orden', {
+    p_sucursal_id: input.branchId,
+    p_barbero_id: staffId,
+    p_inicio: startAt,
+    p_fin: endAt,
+    p_items: rpcItems,
+    p_notas: input.notes ?? null,
+    p_usuario_id: input.clientId ?? null,
+  });
+
+  if (error) {
+    if (error.message.includes('Forbidden')) throw new Error(error.message);
+    if (error.message.includes('Unauthorized')) throw new Error(error.message);
+    if (error.message.toLowerCase().includes('solap')) throw new Error('Barbero no disponible para esa hora');
+    throw new Error(error.message);
+  }
+
+  return String(data);
 }
 
 export async function completeService(orderId: string) {
   const data = await callEdgeFunction<{
-    orderId: string;
-    status: 'completed';
-    earningCents: number;
-    loyalty: { pointsAdded: number; stampsAdded: number };
+    ordenId: string;
+    estado: 'completado' | 'pagado' | 'cancelado' | 'agendado' | 'proceso';
+    serviciosAgregados?: number;
+    fidelidad?: { serviciosCompletados: number; disponible: boolean };
   }>('complete-service', { orderId });
   return data;
 }
@@ -67,9 +86,9 @@ export async function completeService(orderId: string) {
 export async function listMyOrders() {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
-    .from('orders')
-    .select('id, status, appointment_start, appointment_end, branch_id, staff_id, created_at')
-    .order('appointment_start', { ascending: false });
+    .from('ordenes')
+    .select('id, estado, inicio, fin, sucursal_id, barbero_id, creado_en, total')
+    .order('inicio', { ascending: false });
 
   if (error) throw new Error(error.message);
   return data ?? [];
@@ -78,9 +97,9 @@ export async function listMyOrders() {
 export async function getOrderById(orderId: string) {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
-    .from('orders')
+    .from('ordenes')
     .select(
-      'id, status, appointment_start, appointment_end, branch_id, staff_id, client_id, notes, created_at, completed_at, cancelled_at'
+      'id, estado, inicio, fin, sucursal_id, barbero_id, usuario_id, notas, metodo_pago, total, creado_en'
     )
     .eq('id', orderId)
     .single();
@@ -92,10 +111,9 @@ export async function getOrderById(orderId: string) {
 export async function listOrderItems(orderId: string) {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
-    .from('order_items')
-    .select('id, item_type, service_id, product_id, quantity, unit_price_cents, subtotal_cents')
-    .eq('order_id', orderId)
-    .is('deleted_at', null);
+    .from('orden_detalle')
+    .select('id, tipo, referencia_id, cantidad, precio_unitario')
+    .eq('orden_id', orderId);
 
   if (error) throw new Error(error.message);
   return data ?? [];

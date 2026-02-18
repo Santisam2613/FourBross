@@ -3,11 +3,13 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 import { InstallPwaButton } from '@/components/ui/InstallPwaButton';
+import { PwaRootRedirect } from '@/components/ui/PwaRootRedirect';
 import { Scissors, Gift, Calendar, Play, Check, Star } from 'lucide-react';
 
 export default function Homepage() {
   return (
     <div className="min-h-screen bg-white text-zinc-900 font-sans pb-24">
+      <PwaRootRedirect />
       <nav className="fixed top-0 left-0 right-0 z-50 bg-black border-b border-zinc-900">
         <div className="mx-auto w-full max-w-6xl h-16 px-6 lg:px-12 flex items-center gap-6">
           <Link href="/" className="shrink-0 flex items-center">

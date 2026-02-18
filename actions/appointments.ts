@@ -2,30 +2,27 @@
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-export async function listStaffAvailability(branchId: string, staffId: string) {
+export async function getBranchHours(branchId: string) {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
-    .from('staff_availability')
-    .select('id, day_of_week, start_time, end_time, is_active, branch_id, staff_id')
-    .eq('branch_id', branchId)
-    .eq('staff_id', staffId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .order('day_of_week', { ascending: true });
+    .from('sucursales')
+    .select('id, horario_apertura')
+    .eq('id', branchId)
+    .single();
 
   if (error) throw new Error(error.message);
-  return data ?? [];
+  return data;
 }
 
 export async function listStaffOrdersInRange(staffId: string, startIso: string, endIso: string) {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
-    .from('orders')
-    .select('id, appointment_start, appointment_end, status, branch_id')
-    .eq('staff_id', staffId)
-    .gte('appointment_start', startIso)
-    .lte('appointment_start', endIso)
-    .is('deleted_at', null);
+    .from('ordenes')
+    .select('id, inicio, fin, estado, sucursal_id')
+    .eq('barbero_id', staffId)
+    .gte('inicio', startIso)
+    .lte('inicio', endIso)
+    .in('estado', ['agendado', 'proceso', 'completado', 'pagado']);
 
   if (error) throw new Error(error.message);
   return data ?? [];

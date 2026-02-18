@@ -1,22 +1,52 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { MobileAppLayout } from '@/components/layout/MobileAppLayout';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { ArrowLeft, Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Lock, Mail, Loader2 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { isRoleCode, roleHomePath } from '@/types/roles';
 
 export default function LoginPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
+  const [showBackButton] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const isStandalone =
+      window.matchMedia?.('(display-mode: standalone)')?.matches === true ||
+      (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+    return !isStandalone;
+  });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const run = async () => {
+      const supabase = createSupabaseBrowserClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: usuario } = await supabase.from('usuarios').select('rol').eq('id', user.id).single();
+      const role = (usuario as unknown as { rol?: string | null } | null)?.rol ?? null;
+
+      if (role === 'cliente') {
+        router.replace('/client/branch-selection');
+      } else if (typeof role === 'string' && isRoleCode(role)) {
+        router.replace(roleHomePath(role));
+      } else {
+        router.replace('/client/branch-selection');
+      }
+    };
+
+    void run();
+  }, [router]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,10 +76,15 @@ export default function LoginPage() {
          return;
       }
 
-      const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single();
-      const role = profile?.role;
+      const { data: usuario, error: userError } = await supabase.from('usuarios').select('rol, sucursal_id').eq('id', data.user.id).single();
       
-      if (role === 'client') {
+      if (userError) {
+        console.error('Error fetching user role:', userError);
+      }
+
+      const role = usuario?.rol;
+      
+      if (role === 'cliente') {
         router.push('/client/branch-selection');
       } else if (typeof role === 'string' && isRoleCode(role)) {
         router.push(roleHomePath(role));
@@ -64,13 +99,15 @@ export default function LoginPage() {
   return (
     <MobileAppLayout outerClassName="bg-black" className="bg-black">
       <div className="px-6 pt-8 pb-6 flex items-center justify-center relative">
-        <Link
-          href="/"
-          className="absolute left-6 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full border border-white/20 flex items-center justify-center text-white"
-          aria-label="Volver"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
+        {showBackButton ? (
+          <Link
+            href="/"
+            className="absolute left-6 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full border border-white/20 flex items-center justify-center text-white"
+            aria-label="Volver"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+        ) : null}
         <h1 className="text-white text-4xl font-semibold tracking-tight">Iniciar sección</h1>
       </div>
 
@@ -126,7 +163,7 @@ export default function LoginPage() {
             className="w-full h-14 rounded-full text-base font-semibold"
             disabled={submitting}
           >
-            Iniciar
+            {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Iniciar'}
           </Button>
 
           <div className="text-center">
